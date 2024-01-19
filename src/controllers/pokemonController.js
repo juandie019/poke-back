@@ -1,5 +1,10 @@
+const PDFDocument = require("pdfkit");
+
 const pokemonService = require("../services/pokemonService");
+const imageService = require("../services/imageService");
+
 const { isInteger, isNumeric } = require("../utils/typeValidator");
+const { getPdfHead } = require("../utils/pdfHead");
 
 const getPokemons = async (req, res) => {
   const { page, limit, searchterm } = req.query;
@@ -28,14 +33,46 @@ const getPokemon = async (req, res) => {
   if (!nameOrId) return res.status(400).send("Name or pokemon ID is required");
 
   try {
-    const pokemons = await pokemonService.getPokemon(nameOrId);
-    res.send(pokemons);
+    const pokemon = await pokemonService.getPokemon(nameOrId);
+    res.send(pokemon);
   } catch ({ response }) {
-    res.status(response?.status || 500).send(response.data || "Server error");
+    res.status(response?.status || 500).send(response?.data || "Server error");
+  }
+};
+
+const downloadPokemon = async (req, res) => {
+  const { nameOrId } = req.params;
+  if (!nameOrId) return res.status(400).send("Name or pokemon ID is required");
+
+  try {
+    const pokemon = await pokemonService.getPokemon(nameOrId);
+    const myDoc = new PDFDocument({ bufferPages: true });
+    const buffers = [];
+
+    myDoc.on("data", buffers.push.bind(buffers));
+    myDoc.on("end", () => {
+      const pdfData = Buffer.concat(buffers);
+      res
+        .writeHead(200, getPdfHead(Buffer.byteLength(pdfData), pokemon.name))
+        .end(pdfData);
+    });
+
+    myDoc.font("Times-Roman").fontSize(24).text(pokemon.name);
+
+    const pokemonImage = await imageService.fetchImage(pokemon.spriteList[0]);
+    myDoc.image(pokemonImage);
+
+    myDoc.fontSize(12).text(`Weight: ${pokemon.weight} kg`);
+    myDoc.fontSize(12).text(`Height: ${pokemon.weight} mts`);
+
+    myDoc.end();
+  } catch ({ response }) {
+    res.status(response?.status || 500).send(response?.data || "Server error");
   }
 };
 
 module.exports = {
   getPokemons,
   getPokemon,
+  downloadPokemon,
 };
